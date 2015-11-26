@@ -21,7 +21,6 @@ type Instance struct {
 
 type Shard []uint32
 
-
 func CurrentInstance(id int, ip string) *Instance {
     return &Instance{  
         Id:       id,  
@@ -30,13 +29,13 @@ func CurrentInstance(id int, ip string) *Instance {
 }  
   
 type ConsistentHashingClient struct {
-    Nodes       map[uint32]Instance
-    IsPresent   map[int]bool  
+    Instances   map[uint32]Instance
+    IsAlreadyThere map[int]bool
     Circle Shard
 }
 
 
-// Function to PUT keyID and corresponding Value
+// Function to PUT KeyID and corresponding Value
 func PutKeyIdValue(circle *ConsistentHashingClient, str string, input string){
     ip := circle.Get(str)
     address := "http://"+ ip.IP+"/keys/"+str+"/"+input
@@ -92,44 +91,45 @@ func GetKeyIdValues(address string){
 
 func ConsistentHashingClientCurrent() *ConsistentHashingClient {
     return &ConsistentHashingClient{
-        Nodes:     make(map[uint32]Instance),   
-        IsPresent: make(map[int]bool),  
+        Instances:     make(map[uint32]Instance),
+        IsAlreadyThere: make(map[int]bool),
         Circle:      Shard{},  
     }  
 }  
   
 func (hr *ConsistentHashingClient) AddInstance(node *Instance) bool {
-    if _, ok := hr.IsPresent[node.Id]; ok {  
+    if _, ok := hr.IsAlreadyThere[node.Id]; ok {
         return false  
     }  
     str := hr.ReturnNodeIP(node)  
-    hr.Nodes[hr.GetHashValue(str)] = *(node)
-    hr.IsPresent[node.Id] = true  
+    hr.Instances[hr.GetHashValue(str)] = *(node)
+    hr.IsAlreadyThere[node.Id] = true
     hr.ShardedHash()
     return true  
-}  
-  
-func (hr *ConsistentHashingClient) ShardedHash() {
-    hr.Circle = Shard{}  
-    for k := range hr.Nodes {  
-        hr.Circle = append(hr.Circle, k)  
-    }  
-    sort.Sort(hr.Circle)  
-}  
-  
+}
+
 func (hr *ConsistentHashingClient) ReturnNodeIP(node *Instance) string {
-    return node.IP 
-}  
-  
-func (hr *ConsistentHashingClient) GetHashValue(key string) uint32 {
-    return crc32.ChecksumIEEE([]byte(key))  
-}  
+    return node.IP
+}
+
+func (hr *ConsistentHashingClient) ShardedHash() {
+    hr.Circle = Shard{}
+    for k := range hr.Instances {
+        hr.Circle = append(hr.Circle, k)
+    }
+    sort.Sort(hr.Circle)
+}
+
   
 func (hr *ConsistentHashingClient) Get(key string) Instance {
     hash := hr.GetHashValue(key)  
     i := hr.SearchForSharding(hash)
-    return hr.Nodes[hr.Circle[i]]  
-}  
+    return hr.Instances[hr.Circle[i]]
+}
+
+func (hr *ConsistentHashingClient) GetHashValue(key string) uint32 {
+    return crc32.ChecksumIEEE([]byte(key))
+}
 
 func (hr *ConsistentHashingClient) SearchForSharding(hash uint32) int {
     i := sort.Search(len(hr.Circle), func(i int) bool {return hr.Circle[i] >= hash })  
@@ -162,7 +162,6 @@ func main() {
     circle.AddInstance(CurrentInstance(0, "127.0.0.1:3000"))
 	circle.AddInstance(CurrentInstance(1, "127.0.0.1:3001"))
 	circle.AddInstance(CurrentInstance(2, "127.0.0.1:3002"))
-
     PutKeyIdValue(circle,"1","a")
     PutKeyIdValue(circle,"2","b")
     PutKeyIdValue(circle,"3","c")
@@ -186,5 +185,4 @@ func main() {
     GetKeyIdValues("http://127.0.0.1:3000/keys")
     GetKeyIdValues("http://127.0.0.1:3001/keys")
     GetKeyIdValues("http://127.0.0.1:3002/keys")
-
 }  
